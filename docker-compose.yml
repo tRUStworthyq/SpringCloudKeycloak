@@ -1,0 +1,113 @@
+version: '3.1'
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:15.0.2
+    ports:
+      - '8080:8080'
+    environment:
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: admin
+      DB_VENDOR: mysql
+      DB_ADDR: mysql-kc
+      DB_PORT: 3306
+      DB_USER: kc_user
+      DB_PASSWORD: kc_password
+      DB_DATABASE: keycloak
+    depends_on:
+      - mysql-kc
+    networks:
+      - keycloak-and-mysql-network
+
+
+  eureka:
+    build:
+      context: /eureka
+      dockerfile: Dockerfile
+    container_name: eureka
+    restart: on-failure
+    ports:
+      - '8761:8761'
+  gateway:
+    build:
+      context: /gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    restart: on-failure
+    ports:
+      - '8081:8081'
+    depends_on:
+      eureka:
+        condition: service_started
+    links:
+      - eureka
+    environment:
+      - eureka.client.service-url.defaultZone=http://eureka:8761/eureka/
+  book-service:
+    build:
+      context: /book-service
+      dockerfile: Dockerfile
+    container_name: book-service
+    restart: on-failure
+    ports:
+      - '8082:8082'
+    depends_on:
+      eureka:
+        condition: service_started
+    links:
+      - eureka
+    environment:
+      - spring.datasource.url=jdbc:mysql://mysql:3306/test
+      - eureka.client.service-url.defaultZone=http://eureka:8761/eureka/
+
+  author-service:
+    build:
+      context: /author-service
+      dockerfile: Dockerfile
+    container_name: author-service
+    restart: on-failure
+    ports:
+      - '8083:8083'
+    depends_on:
+      eureka:
+        condition: service_started
+    links:
+      - eureka
+    environment:
+      - spring.datasource.url=jdbc:mysql://mysql:3306/test
+      - eureka.client.service-url.defaultZone=http://eureka:8761/eureka/
+
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    restart: on-failure
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=test
+    ports:
+      - '3307:3306'
+    volumes:
+      - dbdata:/var/lib/mysql
+
+  mysql-kc:
+    image: mysql:5.7
+    container_name: mysql-kc
+    restart: on-failure
+    environment:
+      MYSQL_USER: kc_user
+      MYSQL_PASSWORD: kc_password
+      MYSQL_DATABASE: keycloak
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - '3366:3306'
+    volumes:
+      - kc-dbdata:/var/lib/mysql
+    networks:
+      - keycloak-and-mysql-network
+
+volumes:
+  dbdata:
+  kc-dbdata:
+
+networks:
+  keycloak-and-mysql-network:
